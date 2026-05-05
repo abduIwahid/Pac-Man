@@ -1,0 +1,162 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pac-Man Arcade:</title>
+    <style>
+        body { 
+            background: #000; color: #ffff00; font-family: 'Courier New', monospace; 
+            margin: 0; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; height: 100vh; overflow: hidden;
+        }
+        #ui { margin-bottom: 20px; text-align: center; }
+        .score-board { font-size: 32px; text-shadow: 2px 2px #1919a6; }
+        #maze { 
+            background: #000; border: 5px solid #1919a6; padding: 5px; 
+            box-shadow: 0 0 30px #1919a6; position: relative;
+        }
+        .row { display: flex; }
+        .cell { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+        .wall { background: #1919a6; border: 1px solid #000; box-sizing: border-box; }
+        .dot { width: 5px; height: 5px; background: #ffb8ae; border-radius: 50%; }
+        .pacman { width: 22px; height: 22px; fill: #ffff00; transition: transform 0.1s linear; }
+        .ghost { 
+            background: #ff0000; width: 20px; height: 20px; 
+            border-radius: 50% 50% 0 0; position: relative; 
+        }
+        .ghost::after { content: '..'; color: #fff; position: absolute; top: -5px; left: 4px; font-weight: bold; font-size: 16px; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        .btn { 
+            background: #111; color: #ffff00; border: 2px solid #ffff00; 
+            padding: 10px 25px; cursor: pointer; font-family: inherit; font-size: 20px;
+        }
+        .btn:hover { background: #ffff00; color: #000; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="score-board">SCORE: <span id="score">0</span></div>
+        <div style="color: #444; font-size: 14px; margin-top: 5px;">USE ARROWS OR WASD</div>
+    </div>
+
+    <div id="maze">
+        <div id="overlay">
+            <h1 id="status-text">GAME OVER</h1>
+            <button class="btn" onclick="location.reload()">PLAY AGAIN</button>
+        </div>
+        <div id="grid-container"></div>
+    </div>
+
+    <script>
+        const MAP = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+            [1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,0,1],
+            [1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1],
+            [1,0,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,0,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        let state = {
+            pac: { r: 1, c: 1, rot: 0 },
+            ghosts: [{ r: 1, c: 23 }, { r: 9, c: 1 }, { r: 9, c: 23 }],
+            grid: JSON.parse(JSON.stringify(MAP)),
+            score: 0,
+            active: true
+        };
+
+        // Populate Pellets
+        state.grid.forEach((row, r) => row.forEach((val, c) => {
+            if(val === 0) state.grid[r][c] = 4;
+        }));
+        state.grid[1][1] = 0;
+
+        function getPath(start, target) {
+            let queue = [[start]], visited = new Set([`${start.r},${start.c}`]);
+            while(queue.length > 0) {
+                let path = queue.shift(), curr = path[path.length-1];
+                if(curr.r === target.r && curr.c === target.c) return path;
+                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr, dc]) => {
+                    let nr = curr.r + dr, nc = curr.c + dc;
+                    if(state.grid[nr][nc] !== 1 && !visited.has(`${nr},${nc}`)) {
+                        visited.add(`${nr},${nc}`);
+                        queue.push([...path, {r: nr, c: nc}]);
+                    }
+                });
+            }
+            return null;
+        }
+
+        function draw() {
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            state.grid.forEach((row, r) => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'row';
+                row.forEach((cell, c) => {
+                    const cellEl = document.createElement('div');
+                    cellEl.className = 'cell ' + (cell === 1 ? 'wall' : '');
+
+                    if(r === state.pac.r && c === state.pac.c) {
+                        cellEl.innerHTML = `<svg class="pacman" style="transform: rotate(${state.pac.rot}deg)" viewBox="0 0 20 20"><path d="M10 10 L20 4 A10 10 0 1 0 20 16 Z"/></svg>`;
+                    } else if(state.ghosts.some(g => g.r === r && g.c === c)) {
+                        cellEl.innerHTML = '<div class="ghost"></div>';
+                    } else if(cell === 4) {
+                        cellEl.innerHTML = '<div class="dot"></div>';
+                    }
+                    rowEl.appendChild(cellEl);
+                });
+                container.appendChild(rowEl);
+            });
+            document.getElementById('score').innerText = state.score;
+        }
+
+        document.addEventListener('keydown', e => {
+            if(!state.active) return;
+            const keys = {
+                ArrowUp: [-1,0, 270], ArrowDown: [1,0, 90], 
+                ArrowLeft: [0,-1, 180], ArrowRight: [0,1, 0],
+                w: [-1,0, 270], s: [1,0, 90], a: [0,-1, 180], d: [0,1, 0]
+            };
+            if(keys[e.key]) {
+                e.preventDefault();
+                let [dr, dc, rot] = keys[e.key];
+                let nr = state.pac.r + dr, nc = state.pac.c + dc;
+                if(state.grid[nr][nc] !== 1) {
+                    state.pac = { r: nr, c: nc, rot: rot };
+                    if(state.grid[nr][nc] === 4) { state.score++; state.grid[nr][nc] = 0; }
+
+                    state.ghosts = state.ghosts.map(g => {
+                        let p = getPath(g, state.pac);
+                        return (p && p.length > 1) ? p[1] : g;
+                    });
+
+                    if(state.ghosts.some(g => g.r === state.pac.r && g.c === state.pac.c)) {
+                        state.active = false;
+                        document.getElementById('overlay').style.display = 'flex';
+                    }
+                    if(!state.grid.some(r => r.includes(4))) {
+                        state.active = false;
+                        document.getElementById('status-text').innerText = "VICTORY!";
+                        document.getElementById('overlay').style.display = 'flex';
+                    }
+                    draw();
+                }
+            }
+        });
+
+        draw();
+    </script>
+</body>
+</html>
